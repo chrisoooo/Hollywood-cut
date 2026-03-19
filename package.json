@@ -1,0 +1,19 @@
+{
+  "name": "hollywood-cut",
+  "version": "1.0.0",
+  "description": "Film Fusion: Create Your Own Classic - AI Cinematic Image Generator",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx serve .",
+    "dev": "npx serve ."
+  },
+  "keywords": [
+    "ai",
+    "gemini",
+    "image-generation",
+    "cinematic",
+    "film-fusion"
+  ],
+  "author": "",
+  "license": "MIT"
+}

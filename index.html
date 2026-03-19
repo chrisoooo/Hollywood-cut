@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Film Fusion: Create Your Own Classic</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Rye&display=swap" rel="stylesheet">
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- Tailwind Config for Design System -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            canvas: '#FAF9F6',
+            klein: '#002FA7',
+            sunset: '#FF4500',
+            saddle: '#8B4513'
+          },
+          fontFamily: {
+            cinematic: ['"Playfair Display"', 'serif'],
+            western: ['"Rye"', 'cursive'],
+            ui: ['"Inter"', 'sans-serif'],
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', '"Liberation Mono"', '"Courier New"', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Import Maps for ES Modules -->
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.3.1",
+        "react-dom": "https://esm.sh/react-dom@18.3.1",
+        "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+        "framer-motion": "https://esm.sh/framer-motion@11.0.8?external=react,react-dom",
+        "lucide-react": "https://esm.sh/lucide-react@0.344.0?external=react,react-dom"
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #FAF9F6;
+      color: #002FA7; /* Klein Blue text default */
+    }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #002fa740; border-radius: 10px; }
+    
+    /* Paper folded corner effect */
+    .paper-fold {
+      position: relative;
+    }
+    .paper-fold::after {
+      content: '';
+      position: absolute;
+      top: 0; right: 0;
+      border-width: 0 16px 16px 0;
+      border-style: solid;
+      border-color: #FAF9F6 #FAF9F6 #002FA730 #002FA730;
+      box-shadow: -2px 2px 2px rgba(0,0,0,0.05);
+    }
+
+    /* Custom loader */
+    .loader-ring {
+      width: 48px;
+      height: 48px;
+      position: relative;
+    }
+    .loader-ring::before,
+    .loader-ring::after {
+      content: '';
+      position: absolute;
+      border-radius: 50%;
+    }
+    .loader-ring::before {
+      inset: 0;
+      border: 4px solid transparent;
+      border-top-color: #FF4500;
+      animation: spin 1s linear infinite;
+    }
+    .loader-ring::after {
+      inset: 8px;
+      background: #002FA7;
+      animation: pulse 1.5s ease-in-out infinite alternate;
+    }
+    
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    @keyframes pulse { 0% { opacity: 0.3; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
+  </style>
+</head>
+<body class="font-ui antialiased min-h-screen selection:bg-sunset selection:text-white">
+  <div id="root"></div>
+
+  <script type="text/babel" data-type="module">
+    import React, { useState, useEffect, useRef } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { motion, AnimatePresence } from 'framer-motion';
+    import { 
+      Clapperboard, Upload, Image as ImageIcon, Star, Settings2, 
+      RefreshCw, LogOut, Download, Music, Shapes, Hexagon, Check, Wand2
+    } from 'lucide-react';
+
+    // --- Templates & Consts ---
+    const RATIOS = [
+      { label: "抖音 9:16", value: "9:16" },
+      { label: "小红书 3:4", value: "3:4" },
+      { label: "B站 4:3", value: "4:3" },
+      { label: "宽银幕 16:9", value: "16:9" }
+    ];
+    const DOFS = [
+      { label: "浅景深 f/1.2", value: "f/1.2" },
+      { label: "标准 f/4", value: "f/4" },
+      { label: "深景深 f/11", value: "f/11" }
+    ];
+    const QUANTITIES = [1, 2];
+
+    const PROMPT_TEMPLATE = `【人物与面容】
+核心人物： 以上传图片为唯一面部参考，100%精确重构该人物的面部骨骼结构、皮肤纹理、发型及神态...
+[INSERT MOVIE NAME HERE]主演： 呈现其于电影拍摄期间的样貌...
+互动状态： 两人身着各自的戏服，在电影拍摄间隙...
+
+【镜头与构图】
+镜头： 专业人像摄影机模式拍摄... [INSERT DOF HERE]
+构图： [INSERT RATIO HERE] 采用生活化、不拘谨的抓拍构图...
+
+【灯光与色彩】
+主光源： 完全遵循所选电影场景的环境光逻辑...
+色彩风格： 电影风格的色调...
+
+【服装与造型】
+上传人物着装： 保持不变...
+[INSERT MOVIE NAME HERE]主演着装： 符合剧中时代与角色...
+
+【动作与场景】
+核心动作： 电影拍摄被短暂打断...
+关键元素： 画面中需明确可见电影拍摄现场的痕迹（摄影机、灯光架、麦克风杆等）...
+
+【画面风格与细节】
+细节： 模拟柯达Vision3 500T电影胶片质感，带有自然的银盐颗粒感...
+画面氛围： 温暖、怀旧、充满人情味...
+
+【最终画面感受总结】
+一张超写实的照片，仿佛闯入了拍摄现场...`;
+
+    // --- APIService ---
+    class APIService {
+    constructor() {
+      // Logic for using server-side proxy by default
+      // This ensures API keys are NOT exposed in the frontend code
+      this.proxyEndpoint = '/api/generate';
+    }
+
+      async getMoviePosterImpression(movieName) {
+        if (!movieName) return null;
+        try {
+          const prompt = `A cinematic, iconic movie poster for the movie ${movieName}. Abstract, atmospheric, emphasis on mood and color.`;
+          // Fallback fetch style API simulation
+          return await this._mockOrFetchImage('gemini-2.5-flash-image', prompt);
+        } catch (e) {
+          console.error("Poster Error", e);
+          return null;
+        }
+      }
+
+      async generateSetPhoto(prompt, base64Image, ratio, quantity) {
+        try {
+          // Promise.all to generate multiple based on quantity
+          const tasks = Array.from({ length: quantity }).map(() => 
+            this._mockOrFetchImage('gemini-3-pro-image-preview', prompt, base64Image, ratio)
+          );
+          return await Promise.all(tasks);
+        } catch (e) {
+          throw new Error("生成图片失败: " + e.message);
+        }
+      }
+
+      async editSetPhoto(editPrompt, originalImageBase64) {
+        try {
+          return await this._mockOrFetchImage('gemini-2.5-flash-image', editPrompt, originalImageBase64);
+        } catch (e) {
+          throw new Error("图片编辑失败: " + e.message);
+        }
+      }
+
+      async _mockOrFetchImage(model, prompt, refImage, ratio) {
+        // Since Gemini 3.0 Pro / 2.5 Flash can natively output images 
+        // We will try extracting 'inlineData' from the response parts or base64 from text
+        const payload = {
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.8
+          }
+        };
+
+        if (refImage) {
+          const cleanBase64 = refImage.split(',')[1];
+          const mimeType = refImage.split(';')[0].split(':')[1];
+          payload.contents[0].parts.push({
+            inlineData: { data: cleanBase64, mimeType }
+          });
+        }
+
+        const res = await fetch(this.proxyEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model, payload })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error?.message || res.statusText);
+        }
+
+        const data = await res.json();
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        
+        // 解析可能由多模态模型直接返回的图片块 (InlineData)
+        for (const part of parts) {
+            if (part.inlineData) {
+                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+            }
+        }
+        
+        // 或者如果返回的是存有 base64/URL 字符串的文本块
+        const text = parts.map(p => p.text).join('').trim();
+        if (text.startsWith('data:image/')) return text;
+        if (text.startsWith('http')) return text;
+
+        throw new Error("模型调用成功，但未解析到图像数据。返回文本：" + text.slice(0, 100) + "...");
+      }
+    }
+
+
+    // --- Components ---
+
+    function BackgroundAtmosphere({ poster }) {
+      return (
+        <div className="fixed inset-0 pointer-events-none z-[-1] overflow-hidden bg-canvas">
+          {/* Decorative Elements */}
+          <motion.div animate={{ y: [0, -20, 0], rotate: [0, 5, 0] }} transition={{ repeat: Infinity, duration: 8 }} className="absolute top-[15%] left-[10%] text-klein opacity-10"><Music size={64}/></motion.div>
+          <motion.div animate={{ y: [0, 30, 0], rotate: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 12 }} className="absolute top-[40%] right-[15%] text-sunset opacity-15"><Star size={80}/></motion.div>
+          <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ repeat: Infinity, duration: 15 }} className="absolute bottom-[20%] left-[20%] text-saddle opacity-10"><Hexagon size={120}/></motion.div>
+          <motion.div animate={{ rotate: [0, 360] }} transition={{ repeat: Infinity, duration: 60, ease: "linear" }} className="absolute -top-[10%] -right-[10%] text-klein opacity-[0.03]"><Shapes size={400}/></motion.div>
+
+          {/* Dynamic Poster Overlay */}
+          <AnimatePresence>
+            {poster && (
+              <motion.div 
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 0.15 }} // 极低透明度
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-cover bg-center mix-blend-multiply transition-all duration-1000 blur-2xl filter"
+                style={{ backgroundImage: `url("${poster}")` }}
+              />
+            )}
+          </AnimatePresence>
+        </div>
+      );
+    }
+
+
+    function MainLayout({ onLogout }) {
+      // Form State
+      const [image, setImage] = useState(null);
+      const [movieName, setMovieName] = useState('');
+      const [ratio, setRatio] = useState(RATIOS[0].value);
+      const [dof, setDof] = useState(DOFS[0].value);
+      const [quantity, setQuantity] = useState(1);
+      const [prompt, setPrompt] = useState('');
+      
+      const [poster, setPoster] = useState(null);
+      
+      // Result State
+      const [gallery, setGallery] = useState([]);
+      const [activeImageIndex, setActiveImageIndex] = useState(0);
+      const [isGenerating, setIsGenerating] = useState(false);
+      const [error, setError] = useState(null);
+
+      // Post-Edit State
+      const [editPrompt, setEditPrompt] = useState('');
+      const [isEditing, setIsEditing] = useState(false);
+
+      const api = useRef(new APIService());
+      const fileInputRef = useRef(null);
+      const movieDebounceRef = useRef(null);
+
+      // Effect: Debounce background poster generation
+      useEffect(() => {
+        clearTimeout(movieDebounceRef.current);
+        if (!movieName || movieName.trim().length === 0) {
+          setPoster(null);
+          return;
+        }
+        movieDebounceRef.current = setTimeout(async () => {
+          const res = await api.current.getMoviePosterImpression(movieName);
+          if (res) setPoster(res);
+        }, 1200);
+        return () => clearTimeout(movieDebounceRef.current);
+      }, [movieName]);
+
+      const handleImageUpload = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => setImage(ev.target.result);
+        reader.readAsDataURL(file);
+      };
+
+      const handleGeneratePrompt = () => {
+        const p = PROMPT_TEMPLATE
+          .replaceAll('[INSERT MOVIE NAME HERE]', movieName || '【未指定电影】')
+          .replaceAll('[INSERT RATIO HERE]', RATIOS.find(r=>r.value===ratio)?.label || ratio)
+          .replaceAll('[INSERT DOF HERE]', DOFS.find(d=>d.value===dof)?.label || dof);
+        setPrompt(p);
+      };
+
+      const handleGenerateImg = async () => {
+        if (!image) return setError("Please upload a reference image.");
+        if (!prompt) return setError("Please generate or input the Prompt.");
+        
+        setError(null);
+        setIsGenerating(true);
+        setGallery([]);
+        setActiveImageIndex(0);
+        
+        try {
+          const resArray = await api.current.generateSetPhoto(prompt, image, ratio, quantity);
+          setGallery(resArray);
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setIsGenerating(false);
+        }
+      };
+
+      const handleEditImg = async () => {
+        if (!editPrompt.trim() || gallery.length === 0) return;
+        setError(null);
+        setIsEditing(true);
+        try {
+          const res = await api.current.editSetPhoto(editPrompt, gallery[activeImageIndex]);
+          const newG = [...gallery];
+          newG[activeImageIndex] = res; // update current image in gallery
+          setGallery(newG);
+        } catch(err) {
+          setError(err.message);
+        } finally {
+          setIsEditing(false);
+          setEditPrompt('');
+        }
+      };
+
+      return (
+        <div className="flex flex-col min-h-screen relative z-10">
+          <BackgroundAtmosphere poster={poster} />
+          
+          {/* Header */}
+          <header className="w-full p-6 flex justify-between items-start lg:items-center relative z-20">
+            <div className="flex items-center gap-4">
+              <img src="./logo.jpg" alt="Film Fusion Logo" className="w-16 h-16 rounded-xl border-2 border-klein shadow-sm object-cover bg-white p-1" />
+              <h1 className="text-5xl lg:text-6xl font-cinematic font-bold italic tracking-tighter text-klein drop-shadow-sm">
+                Film <span className="text-sunset">Fusion</span>
+              </h1>
+            </div>
+            <button 
+              onClick={onLogout}
+              className="hidden lg:flex items-center gap-2 px-4 py-2 border-2 border-klein text-klein font-mono text-sm uppercase font-bold hover:bg-klein hover:text-white transition-colors"
+            >
+              <LogOut size={16} /> Reset
+            </button>
+          </header>
+
+          {/* Main Layout Workspace */}
+          <main className="flex-1 w-full max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 p-6 pb-24 z-20 relative">
+            
+            {/* === LEFT: CONTROLS === */}
+            <section className="flex flex-col gap-6">
+              
+              {/* Upload Card */}
+              <div className="bg-white border border-klein/20 shadow-sm p-6 hover:border-sunset/50 transition-colors">
+                <h3 className="text-xs font-mono text-saddle mb-3 tracking-widest uppercase flex items-center gap-2"><ImageIcon size={14}/> Reference Image</h3>
+                <div 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="group relative flex h-36 cursor-pointer flex-col items-center justify-center border-2 border-dashed border-klein/30 bg-canvas hover:border-sunset hover:bg-sunset/5 transition-all"
+                >
+                  {image ? (
+                    <img src={image} alt="Ref" className="h-full w-full object-cover group-hover:opacity-80 transition-opacity" />
+                  ) : (
+                    <>
+                      <Upload size={24} className="mb-2 text-klein group-hover:text-sunset transition-colors" />
+                      <span className="text-sm font-medium text-klein group-hover:text-sunset transition-colors">Click or drag image here</span>
+                    </>
+                  )}
+                </div>
+                <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
+              </div>
+
+              {/* Scene Settings */}
+              <div className="bg-white border border-klein/20 shadow-sm p-6 hover:border-sunset/50 transition-colors space-y-5">
+                <h3 className="text-xs font-mono text-saddle tracking-widest uppercase flex items-center gap-2"><Settings2 size={14}/> Scene Settings</h3>
+                
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-klein">Movie Name</label>
+                  <input 
+                    type="text" 
+                    value={movieName} 
+                    onChange={e => setMovieName(e.target.value)}
+                    placeholder="e.g. Inception, The God Father..."
+                    className="w-full border-b-2 border-klein/40 bg-transparent py-2 outline-none focus:border-sunset text-klein transition-colors placeholder:text-klein/30"
+                  />
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                  <div>
+                    <label className="mb-2 block text-xs font-bold text-klein uppercase">Aspect Ratio</label>
+                    <div className="flex flex-wrap gap-2">
+                      {RATIOS.map(r => (
+                        <button 
+                          key={r.value} onClick={() => setRatio(r.value)}
+                          className={`px-3 py-1.5 text-xs font-medium border ${ratio === r.value ? 'bg-sunset text-white border-sunset' : 'border-klein/30 text-klein hover:border-klein'}`}
+                        >
+                          {r.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold text-klein uppercase">Depth of Field</label>
+                    <div className="flex flex-wrap gap-2">
+                      {DOFS.map(d => (
+                        <button 
+                          key={d.value} onClick={() => setDof(d.value)}
+                          className={`px-3 py-1.5 text-xs border font-mono ${dof === d.value ? 'bg-sunset text-white border-sunset' : 'border-klein/30 text-klein hover:border-klein'}`}
+                        >
+                          {d.value}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Director's Prompt */}
+              <div className="bg-white border border-klein/20 shadow-sm p-6 hover:border-sunset/50 transition-colors paper-fold">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xs font-mono text-saddle tracking-widest uppercase flex items-center gap-2"><Clapperboard size={14}/> Director's Prompt</h3>
+                  <button 
+                    onClick={handleGeneratePrompt}
+                    className="text-xs font-bold text-klein border-b border-klein hover:text-sunset hover:border-sunset transition-colors uppercase"
+                  >
+                    Build Template
+                  </button>
+                </div>
+                <textarea 
+                  value={prompt}
+                  onChange={e => setPrompt(e.target.value)}
+                  rows={8}
+                  placeholder="Click 'Build Template' to generate the prompt..."
+                  className="w-full bg-canvas/50 border border-klein/20 p-4 text-sm leading-relaxed text-klein outline-none focus:border-sunset custom-scrollbar select-all"
+                ></textarea>
+              </div>
+
+              {/* Action Area */}
+              <div className="flex gap-4 items-end">
+                <div className="w-1/4">
+                  <label className="mb-2 block text-xs font-bold text-klein uppercase">Quantity</label>
+                  <div className="flex bg-white border border-klein/30">
+                    {QUANTITIES.map(q => (
+                      <button 
+                        key={q} onClick={() => setQuantity(q)}
+                        className={`flex-1 py-3 text-sm font-mono font-bold ${quantity === q ? 'bg-klein text-white' : 'text-klein hover:bg-klein/10'}`}
+                      >
+                        x{q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="w-3/4">
+                  <button
+                    onClick={handleGenerateImg}
+                    disabled={isGenerating}
+                    className="group relative w-full flex items-center justify-center gap-3 bg-sunset text-white p-4 font-black text-xl tracking-widest uppercase overflow-hidden disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <RefreshCw size={24} className="animate-spin" />
+                        PROCESSING...
+                      </>
+                    ) : (
+                      <>
+                        <Star size={24} className="group-hover:rotate-180 transition-transform duration-500" />
+                        ACTION !
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {error && (
+                <div className="bg-[#FF0000]/10 border border-[#FF0000]/30 text-[#FF0000] p-4 text-sm font-bold">
+                  Error: {error}
+                </div>
+              )}
+
+            </section>
+
+            {/* === RIGHT: MONITOR === */}
+            <section className="flex flex-col h-full min-h-[600px]">
+              
+              <div className="flex-1 relative border-4 border-klein bg-white p-2">
+                <div className="w-full h-full border-2 border-dashed border-klein/30 flex flex-col items-center justify-center overflow-hidden relative bg-canvas">
+                  
+                  {isGenerating ? (
+                    <div className="flex flex-col items-center gap-6">
+                      <div className="loader-ring"></div>
+                      <p className="font-western text-2xl text-klein tracking-widest animate-pulse">DEVELOPING...</p>
+                    </div>
+                  ) : gallery.length > 0 ? (
+                    <AnimatePresence mode="wait">
+                      <motion.div 
+                        key={activeImageIndex}
+                        initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+                        className="w-full h-full relative flex items-center justify-center"
+                      >
+                        <img src={gallery[activeImageIndex]} alt="Result" className="max-w-full max-h-full object-contain drop-shadow-xl" />
+                        
+                        <a href={gallery[activeImageIndex]} download="film_fusion.png" className="absolute bottom-4 right-4 bg-sunset text-white p-3 rounded-full hover:bg-klein transition-colors shadow-lg">
+                          <Download size={20} />
+                        </a>
+                      </motion.div>
+                    </AnimatePresence>
+                  ) : (
+                    <div className="text-center opacity-40">
+                      <p className="font-western text-5xl text-klein mb-2 mt-4 tracking-wider">NO SIGNAL</p>
+                      <p className="font-mono text-saddle uppercase tracking-widest text-sm font-bold">Standby for Action</p>
+                    </div>
+                  )}
+
+                </div>
+              </div>
+
+              {/* Gallery List (If multiple) */}
+              {gallery.length > 1 && (
+                <div className="mt-4 flex gap-4 overflow-x-auto custom-scrollbar pb-2">
+                  {gallery.map((img, idx) => (
+                    <button 
+                      key={idx} 
+                      onClick={() => setActiveImageIndex(idx)}
+                      className={`relative h-20 w-32 shrink-0 border-2 overflow-hidden ${activeImageIndex === idx ? 'border-sunset' : 'border-klein/20 opacity-60 hover:opacity-100'}`}
+                    >
+                      <img src={img} className="object-cover w-full h-full" alt={`Thumb ${idx}`}/>
+                      {activeImageIndex === idx && <div className="absolute top-1 right-1 bg-sunset text-white rounded-full p-0.5"><Check size={12}/></div>}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Magic Edit */}
+              {gallery.length > 0 && (
+                <div className="mt-6 flex flex-col gap-2">
+                  <label className="text-xs font-mono text-saddle tracking-widest uppercase flex items-center gap-2"><Wand2 size={14}/> Magic Edit</label>
+                  <div className="flex border-2 border-klein bg-white">
+                    <input 
+                      type="text" 
+                      placeholder="e.g. 变成黑白胶片..."
+                      value={editPrompt}
+                      onChange={e => setEditPrompt(e.target.value)}
+                      className="flex-1 bg-transparent px-4 py-3 outline-none text-klein font-ui placeholder:text-klein/30 font-medium"
+                      onKeyDown={e => e.key === 'Enter' && handleEditImg()}
+                    />
+                    <button 
+                      onClick={handleEditImg}
+                      disabled={isEditing || !editPrompt.trim()}
+                      className="bg-klein text-white px-6 font-mono font-bold uppercase tracking-wider hover:bg-sunset disabled:opacity-50 transition-colors flex items-center gap-2"
+                    >
+                      {isEditing ? <RefreshCw size={16} className="animate-spin" /> : 'Apply Cut'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+            </section>
+
+          </main>
+
+          {/* Footer */}
+          <footer className="fixed bottom-0 w-full bg-klein text-white py-3 px-6 flex justify-between items-center z-50 text-xs font-mono opacity-90">
+            <div className="tracking-widest font-medium opacity-80">FILM FUSION ★ CREATE YOUR OWN CLASSIC</div>
+            <div className="hidden sm:block opacity-60">CAM-A/ROLL-01/SCENE-99</div>
+          </footer>
+
+        </div>
+      );
+    }
+
+    function App() {
+      // In a production app, checking for apiKey in localStorage is fine for BYOK
+      // but she wants a more "professional" setup via server config
+      return (
+        <MainLayout key="main" onLogout={() => window.location.reload()} />
+      );
+    }
+
+    const root = createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>

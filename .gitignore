@@ -1,0 +1,8 @@
+.DS_Store
+.env
+.env.local
+.agents/
+node_modules/
+dist/
+.env*.local
+.vercel
