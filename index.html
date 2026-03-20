@@ -156,10 +156,14 @@
     // --- APIService ---
     class APIService {
     constructor() {
-      // Logic for using server-side proxy by default
-      // This ensures API keys are NOT exposed in the frontend code
+      // Support for both server-side proxy and direct browser-side calls
       this.proxyEndpoint = '/api/generate';
+      this.directBaseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/';
     }
+
+      getApiKey() {
+        return localStorage.getItem('gemini_api_key');
+      }
 
       async getMoviePosterImpression(movieName) {
         if (!movieName) return null;
@@ -211,11 +215,22 @@
           });
         }
 
-        const res = await fetch(this.proxyEndpoint, {
+        const apiKey = this.getApiKey();
+        let url = this.proxyEndpoint;
+        let options = {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ model, payload })
-        });
+        };
+
+        if (apiKey) {
+          // Direct browser-side call (BYOK)
+          url = `${this.directBaseUrl}${model}:generateContent?key=${apiKey}`;
+          // Payload is exactly what Gemini expects
+          options.body = JSON.stringify(payload);
+        }
+
+        const res = await fetch(url, options);
 
         if (!res.ok) {
           const err = await res.json();
@@ -286,6 +301,9 @@
       const [activeImageIndex, setActiveImageIndex] = useState(0);
       const [isGenerating, setIsGenerating] = useState(false);
       const [error, setError] = useState(null);
+      const [localApiKey, setLocalApiKey] = useState(localStorage.getItem('gemini_api_key') || '');
+      const [showKeyModal, setShowKeyModal] = useState(false);
+      const [tempKeyInput, setTempKeyInput] = useState('');
 
       // Post-Edit State
       const [editPrompt, setEditPrompt] = useState('');
@@ -361,6 +379,25 @@
         }
       };
 
+      const handleSetApiKey = () => {
+        setTempKeyInput(localApiKey);
+        setShowKeyModal(true);
+      };
+
+      const saveApiKey = () => {
+        const k = tempKeyInput.trim();
+        if (k) {
+          localStorage.setItem('gemini_api_key', k);
+          setLocalApiKey(k);
+        } else {
+          localStorage.removeItem('gemini_api_key');
+          setLocalApiKey('');
+        }
+        setShowKeyModal(false);
+        // Optional: reload to clear any previously failed state
+        window.location.reload();
+      };
+
       return (
         <div className="flex flex-col min-h-screen relative z-10">
           <BackgroundAtmosphere poster={poster} />
@@ -373,12 +410,20 @@
                 Film <span className="text-sunset">Fusion</span>
               </h1>
             </div>
-            <button 
-              onClick={onLogout}
-              className="hidden lg:flex items-center gap-2 px-4 py-2 border-2 border-klein text-klein font-mono text-sm uppercase font-bold hover:bg-klein hover:text-white transition-colors"
-            >
-              <LogOut size={16} /> Reset
-            </button>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={handleSetApiKey}
+                className={`flex items-center gap-2 px-4 py-2 border-2 border-klein font-mono text-sm uppercase font-bold transition-all ${localApiKey ? 'text-klein border-klein hover:bg-klein hover:text-white' : 'bg-sunset text-white border-sunset'}`}
+              >
+                <Settings2 size={16} /> {localApiKey ? 'Key' : 'Setup Key'}
+              </button>
+              <button 
+                onClick={onLogout}
+                className="hidden lg:flex items-center gap-2 px-4 py-2 border-2 border-klein text-klein font-mono text-sm uppercase font-bold hover:bg-klein hover:text-white transition-colors"
+              >
+                <LogOut size={16} /> Reset
+              </button>
+            </div>
           </header>
 
           {/* Main Layout Workspace */}
@@ -600,6 +645,44 @@
             <div className="tracking-widest font-medium opacity-80">FILM FUSION ★ CREATE YOUR OWN CLASSIC</div>
             <div className="hidden sm:block opacity-60">CAM-A/ROLL-01/SCENE-99</div>
           </footer>
+
+          {/* API Key Modal */}
+          {showKeyModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+              <div className="bg-canvas border-2 border-klein p-8 max-w-md w-full shadow-2xl relative">
+                <h2 className="font-cinematic text-2xl font-bold text-klein mb-4 italic">Configuration</h2>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-mono text-saddle mb-2 tracking-widest uppercase">Gemini API Key</label>
+                    <input 
+                      type="password"
+                      value={tempKeyInput}
+                      onChange={e => setTempKeyInput(e.target.value)}
+                      placeholder="AIzaSy..."
+                      className="w-full bg-white border border-klein/40 p-3 outline-none focus:border-sunset text-klein font-mono text-sm"
+                    />
+                    <p className="text-xs text-klein/60 mt-2 font-ui">
+                      Your key is saved locally in your browser. Leave blank to use server proxy.
+                    </p>
+                  </div>
+                  <div className="flex gap-3 justify-end mt-8">
+                    <button 
+                      onClick={() => setShowKeyModal(false)}
+                      className="px-6 py-2 border border-klein text-klein font-mono text-sm font-bold hover:bg-klein/5"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={saveApiKey}
+                      className="px-6 py-2 bg-klein text-white font-mono text-sm font-bold hover:bg-sunset transition-colors"
+                    >
+                      Save Key
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       );
